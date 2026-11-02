@@ -61,11 +61,11 @@ Defined in the `triton-resnet50-config` ConfigMap inside `triton-server/triton-d
 | `instance_group` | `count: 1`, `KIND_GPU` | Model copies on the GPU (tested with 1 and 2) |
 | `dynamic_batching` | preferred `[8, 16, 32]`, delay `5000` us | Wait up to 5 ms to fill a batch |
 
-Triton runs with `--strict-model-config=false` and exposes HTTP `8000`, gRPC `8001` and metrics `8002`. The GPU request uses Volcano vGPU limits (`vgpu-number`, `vgpu-memory`, `vgpu-cores`). Adjust them for your cluster.
+Triton runs with `--strict-model-config=false` and exposes HTTP `8000`, gRPC `8001` and metrics `8002`. The GPU request uses NVIDIA GPU limits. Adjust them for your cluster.
 
 ## Prerequisites
 
-- A Kubernetes cluster with a GPU node and the Volcano vGPU scheduler (or edit the GPU resource limits and `schedulerName` for your setup).
+- A Kubernetes cluster with a GPU node and the GPU scheduler (or edit the GPU resource limits and `schedulerName` for your setup).
 - `kubectl` and `kustomize` support (`kubectl apply -k`).
 - Prometheus Operator, only if you use the PodMonitor and Grafana dashboard.
 - Docker, only if you rebuild the app image.
