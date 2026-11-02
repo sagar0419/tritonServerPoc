@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Triton Vision Lab</title>
+  <style>
+    body{font:17px system-ui;background:#eef2f6;color:#172133;margin:0}
+    main{max-width:960px;margin:40px auto;padding:28px;background:white;border-radius:16px}
+    label{display:block;margin:16px 0}button,select,input{font:inherit;padding:10px;max-width:100%}
+    button{background:#2454d6;color:white;border:0;border-radius:6px;cursor:pointer}
+    .cards{display:flex;gap:20px;flex-wrap:wrap}.card{flex:1;min-width:260px;border:1px solid #ccd4e0;padding:16px;border-radius:10px}
+    img{max-width:100%;max-height:240px;object-fit:contain}li{margin:8px 0}
+    #status{white-space:pre-wrap}small{color:#536079}
+  </style>
+</head>
+<body><main>
+  <h1>Triton Vision Lab</h1>
+  <p>Upload one image to classify it, or two to compare their predicted object categories.</p>
+  <p><strong>Not identity verification:</strong> two dogs may match the same category without being the same dog. Only the center crop is classified.</p>
+  <form id="form">
+    <label>Images (JPEG, PNG or WebP; up to two, 5 MiB each)
+      <input id="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required>
+    </label>
+    <label>Search ImageNet classes
+      <input id="class-search" type="search" placeholder="Type a class, e.g. dog or Samoyed"
+        autocomplete="off" aria-controls="expected" aria-describedby="class-search-status">
+    </label>
+    <small id="class-search-status" role="status" aria-live="polite"></small>
+    <label>Expected ImageNet class (optional; select a search result)
+      <select id="expected"><option value="">No expected class</option>
+      {% for label in labels %}<option value="{{ loop.index0 }}">{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button id="submit">Classify with Triton</button>
+  </form>
+  <p id="status" role="status"></p><div id="results" class="cards"></div>
+  <small>Uploads are processed in memory and forwarded only to the configured Triton service. No image archive is kept. Avoid uploading sensitive images to this unauthenticated learning app.</small>
+</main>
+<script>
+const form=document.getElementById('form'),status=document.getElementById('status'),results=document.getElementById('results'),button=document.getElementById('submit');
+const expected=document.getElementById('expected'),classSearch=document.getElementById('class-search'),classSearchStatus=document.getElementById('class-search-status');
+const classOptions=[...expected.options].slice(1).map(option=>({value:option.value,label:option.textContent}));
+classSearch.addEventListener('input',()=>{
+  const query=classSearch.value.trim().toLowerCase(),selected=expected.value;
+  const matches=classOptions.filter(option=>option.label.toLowerCase().includes(query));
+  expected.replaceChildren(new Option('No expected class',''));
+  matches.forEach(option=>expected.add(new Option(option.label,option.value)));
+  const retained=matches.some(option=>option.value===selected);
+  expected.value=retained?selected:'';
+  classSearchStatus.textContent=(matches.length?matches.length+' matching classes.':'No matching ImageNet classes. Try another name.')+
+    (selected&&!retained?' Previous selection cleared; select a matching class.':'');
+});
+let previews=[];
+form.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const files=[...document.getElementById('images').files];
+  if(files.length<1||files.length>2||files.some(f=>f.size>5*1024*1024)){status.textContent='Choose one or two images, at most 5 MiB each.';return;}
+  previews.forEach(URL.revokeObjectURL);previews=[];results.replaceChildren();
+  const data=new FormData();files.forEach(f=>data.append('images',f));data.append('expected',document.getElementById('expected').value);
+  button.disabled=true;status.textContent='Sending images to Triton...';
+  try{
+    const response=await fetch('/api/classify',{method:'POST',body:data});
+    const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Request failed');
+    payload.results.forEach((result,i)=>{
+      const card=document.createElement('section');card.className='card';
+      const heading=document.createElement('h2');heading.textContent='Image '+(i+1);card.append(heading);
+      const img=document.createElement('img');img.alt='Uploaded image '+(i+1);img.src=URL.createObjectURL(files[i]);previews.push(img.src);card.append(img);
+      const list=document.createElement('ol');
+      result.top5.forEach(item=>{const li=document.createElement('li');li.textContent=item.label+' - '+(item.score*100).toFixed(2)+'% score';list.append(li);});card.append(list);
+      if(result.expected_top1_match!==null){const p=document.createElement('p');p.textContent='Expected class: top-1 '+(result.expected_top1_match?'MATCH':'NO MATCH')+', top-5 '+(result.expected_top5_match?'MATCH':'NO MATCH');card.append(p);}
+      results.append(card);
+    });
+    status.textContent=(payload.same_predicted_category===null?'':('Category comparison: '+(payload.same_predicted_category?'MATCH':'NO MATCH')+'\n'))+payload.note;
+  }catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+});
+</script>
+</body></html>

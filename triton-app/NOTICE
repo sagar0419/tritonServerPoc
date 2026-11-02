@@ -1,0 +1,6 @@
+ImageNet synset.txt source:
+https://github.com/onnx/models/blob/main/validated/vision/classification/synset.txt
+Bundled from the ONNX Model Zoo, licensed under Apache License 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+Preprocessing follows the ONNX Model Zoo ResNet documentation.
+This application is not affiliated with NVIDIA, ONNX or ImageNet.

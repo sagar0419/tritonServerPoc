@@ -1,0 +1,23 @@
+# Verified: day-gpu-test/default exposes /metrics on named pod port metrics.
+# Prometheus monitoring/kube-prometheus-stack-prometheus accepts PodMonitors
+# across namespaces. Creating this file does not apply it to the cluster.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: triton-server
+  namespace: default
+  labels:
+    app: triton-server
+spec:
+  namespaceSelector:
+    matchNames:
+      - default
+  selector:
+    matchLabels:
+      app: triton-server
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      scheme: http
+      interval: 15s
+      scrapeTimeout: 10s

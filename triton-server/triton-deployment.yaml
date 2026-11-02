@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: triton-resnet50-config
+  namespace: default
+data:
+  config.pbtxt: |
+    name: "resnet50"
+    platform: "onnxruntime_onnx"
+    max_batch_size: 32
+    input [
+      {
+        name: "data"
+        data_type: TYPE_FP32
+        dims: [ 3, 224, 224 ]
+      }
+    ]
+    output [
+      {
+        name: "resnetv24_dense0_fwd"
+        data_type: TYPE_FP32
+        dims: [ 1000 ]
+      }
+    ]
+    instance_group [
+      {
+        count: 1
+        kind: KIND_GPU
+      }
+    ]
+    dynamic_batching {
+      preferred_batch_size: [ 8, 16, 32 ]
+      max_queue_delay_microseconds: 5000
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triton-server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: triton-server
+  template:
+    metadata:
+      labels:
+        app: triton-server
+    spec:
+      schedulerName: volcano 
+      initContainers:
+      - name: download-model
+        image: curlimages/curl:8.8.0
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            ephemeral-storage: 256Mi
+          limits:
+            ephemeral-storage: 1Gi
+        command:
+        - sh
+        - -c
+        - |
+          set -ex
+          mkdir -p /models/resnet50/1
+          curl -L \
+            https://github.com/onnx/models/raw/main/validated/vision/classification/resnet/model/resnet50-v2-7.onnx \
+            -o /models/resnet50/1/model.onnx
+          ls -lh /models/resnet50/1/
+        volumeMounts:
+        - name: model-repository
+          mountPath: /models
+      containers:
+      - name: tritonserver
+        image: nvcr.io/nvidia/tritonserver:24.01-py3
+        imagePullPolicy: IfNotPresent
+        args:
+        - tritonserver
+        - --model-repository=/models
+        - --strict-model-config=false
+        ports:
+        - name: http
+          containerPort: 8000
+        - name: grpc
+          containerPort: 8001
+        - name: metrics
+          containerPort: 8002
+        resources:
+          requests:
+            ephemeral-storage: 5Gi
+          limits:
+            volcano.sh/vgpu-number: "1"
+            volcano.sh/vgpu-memory: "27186" # 13333 # 80: 27306 | 60: 20480 | 40: 13653 | 20: 6827 | 10: 3413
+            volcano.sh/vgpu-cores: "100"
+            # ephemeral-storage: 10Gi
+        volumeMounts:
+        - name: model-repository
+          mountPath: /models
+        - name: config-volume
+          mountPath: /models/resnet50/config.pbtxt
+          subPath: config.pbtxt
+        startupProbe:
+          httpGet:
+            path: /v2/health/ready
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          httpGet:
+            path: /v2/health/ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /v2/health/live
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: model-repository
+        emptyDir:
+          sizeLimit: 2Gi
+      - name: config-volume
+        configMap:
+          name: triton-resnet50-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton-server
+  namespace: default
+spec:
+  selector:
+    app: triton-server
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  - name: grpc
+    port: 8001
+    targetPort: 8001
+  - name: metrics
+    port: 8002
+    targetPort: 8002
+  type: ClusterIP
