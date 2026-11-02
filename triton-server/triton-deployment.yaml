@@ -91,9 +91,7 @@ spec:
           requests:
             ephemeral-storage: 5Gi
           limits:
-            volcano.sh/vgpu-number: "1"
-            volcano.sh/vgpu-memory: "27186" # 13333 # 80: 27306 | 60: 20480 | 40: 13653 | 20: 6827 | 10: 3413
-            volcano.sh/vgpu-cores: "100"
+            nvidia.com/mig-7g.80gb: 1
             # ephemeral-storage: 10Gi
         volumeMounts:
         - name: model-repository
