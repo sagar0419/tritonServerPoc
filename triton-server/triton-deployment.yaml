@@ -49,7 +49,6 @@ spec:
       labels:
         app: triton-server
     spec:
-      schedulerName: volcano 
       initContainers:
       - name: download-model
         image: curlimages/curl:8.8.0
